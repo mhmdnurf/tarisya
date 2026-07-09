@@ -1,0 +1,4 @@
+DROP TABLE IF EXISTS metrics;
+DROP TABLE IF EXISTS server_api_keys;
+DROP TABLE IF EXISTS servers;
+DROP TABLE IF EXISTS users;

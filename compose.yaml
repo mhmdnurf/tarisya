@@ -18,20 +18,29 @@ services:
   core:
     build: .
     environment:
-      TARISYA_CORE_ADDRESS: :8080
+      TARISYA_CORE_ADDRESS: :8081
       TARISYA_DATABASE_URL: postgres://tarisya:tarisya@postgres:5432/tarisya?sslmode=disable
+      TARISYA_JWT_SECRET: ${TARISYA_JWT_SECRET:-development-jwt-secret-change-this-now}
+      TARISYA_ALLOWED_ORIGINS: ${TARISYA_ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:5173}
+      TARISYA_COOKIE_SECURE: ${TARISYA_COOKIE_SECURE:-false}
+      TARISYA_OFFLINE_THRESHOLD: ${TARISYA_OFFLINE_THRESHOLD:-90s}
+      TARISYA_WARNING_THRESHOLD: ${TARISYA_WARNING_THRESHOLD:-80}
+      TARISYA_CRITICAL_THRESHOLD: ${TARISYA_CRITICAL_THRESHOLD:-90}
       TARISYA_BOOTSTRAP_SERVER_ID: ${TARISYA_SERVER_ID:-srv_prod_01}
       TARISYA_BOOTSTRAP_API_KEY: ${TARISYA_API_KEY:-development-secret}
+      TARISYA_BOOTSTRAP_USER_NAME: ${TARISYA_BOOTSTRAP_USER_NAME:-Development User}
+      TARISYA_BOOTSTRAP_USER_EMAIL: ${TARISYA_BOOTSTRAP_USER_EMAIL:-dev@tarisya.local}
+      TARISYA_BOOTSTRAP_USER_PASSWORD: ${TARISYA_BOOTSTRAP_USER_PASSWORD:-development-password}
     depends_on:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8081/health"]
       interval: 10s
       timeout: 3s
       retries: 5
     ports:
-      - "8080:8080"
+      - "8081:8081"
 
 volumes:
   tarisya_postgres:

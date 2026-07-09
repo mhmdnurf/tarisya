@@ -36,14 +36,28 @@ func main() {
 		slog.Error("could not migrate database", "error", err)
 		os.Exit(1)
 	}
-	if err := store.BootstrapServer(ctx, cfg.BootstrapServerID, cfg.BootstrapAPIKey); err != nil {
-		slog.Error("could not bootstrap server", "error", err)
-		os.Exit(1)
+	if cfg.BootstrapEmail != "" {
+		passwordHash, err := core.HashPassword(cfg.BootstrapPassword)
+		if err != nil {
+			slog.Error("could not hash bootstrap password", "error", err)
+			os.Exit(1)
+		}
+		if err := store.Bootstrap(
+			ctx,
+			cfg.BootstrapName,
+			cfg.BootstrapEmail,
+			passwordHash,
+			cfg.BootstrapServerID,
+			cfg.BootstrapAPIKey,
+		); err != nil {
+			slog.Error("could not bootstrap development data", "error", err)
+			os.Exit(1)
+		}
 	}
 
 	server := &http.Server{
 		Addr:              cfg.Address,
-		Handler:           core.NewHandler(store),
+		Handler:           core.NewHandler(store, cfg),
 		ReadHeaderTimeout: cfg.ShutdownTimeout,
 	}
 	go func() {

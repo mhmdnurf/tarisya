@@ -1,3 +1,5 @@
 docs
 .env
 bin/
+tmp/
+build-errors.log

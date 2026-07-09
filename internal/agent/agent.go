@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/mhmdnurf/tarisya/internal/config"
@@ -15,25 +16,35 @@ import (
 )
 
 type Payload struct {
-	ServerID  string         `json:"server_id"`
-	Timestamp time.Time      `json:"timestamp"`
-	Metrics   metrics.Values `json:"metrics"`
+	ServerID     string         `json:"server_id"`
+	Hostname     string         `json:"hostname"`
+	AgentVersion string         `json:"agent_version"`
+	Timestamp    time.Time      `json:"timestamp"`
+	Metrics      metrics.Values `json:"metrics"`
 }
+
+const Version = "v0.1.0"
 
 type Agent struct {
 	config    config.Config
 	collector metrics.Collector
 	client    *http.Client
+	hostname  string
 }
 
 func New(cfg config.Config, collector metrics.Collector) *Agent {
 	if collector == nil {
 		collector = metrics.SystemCollector{}
 	}
+	hostname, err := os.Hostname()
+	if err != nil || hostname == "" {
+		hostname = "unknown"
+	}
 	return &Agent{
 		config:    cfg,
 		collector: collector,
 		client:    &http.Client{Timeout: cfg.Timeout},
+		hostname:  hostname,
 	}
 }
 
@@ -62,9 +73,11 @@ func (a *Agent) collectAndSend(ctx context.Context) {
 	}
 
 	payload := Payload{
-		ServerID:  a.config.ServerID,
-		Timestamp: time.Now().UTC(),
-		Metrics:   values,
+		ServerID:     a.config.ServerID,
+		Hostname:     a.hostname,
+		AgentVersion: Version,
+		Timestamp:    time.Now().UTC(),
+		Metrics:      values,
 	}
 	if err := a.send(ctx, payload); err != nil {
 		slog.Error("could not send metrics", "error", err)

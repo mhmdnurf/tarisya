@@ -8,5 +8,5 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/tarisya-core ./cmd
 FROM alpine:3.22
 RUN apk add --no-cache ca-certificates
 COPY --from=build /out/tarisya-core /usr/local/bin/tarisya-core
-EXPOSE 8080
+EXPOSE 8081
 ENTRYPOINT ["tarisya-core"]

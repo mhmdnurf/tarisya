@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	defaultEndpoint = "http://localhost:8080/api/v1/metrics"
+	defaultEndpoint = "http://localhost:8081/api/v1/metrics"
 	defaultInterval = 15 * time.Second
 	defaultTimeout  = 10 * time.Second
 )

@@ -35,8 +35,10 @@ func TestSend(t *testing.T) {
 		Timeout:  time.Second,
 	}
 	payload := Payload{
-		ServerID:  "srv_prod_01",
-		Timestamp: time.Date(2026, 7, 9, 12, 0, 0, 0, time.UTC),
+		ServerID:     "srv_prod_01",
+		Hostname:     "web-01",
+		AgentVersion: Version,
+		Timestamp:    time.Date(2026, 7, 9, 12, 0, 0, 0, time.UTC),
 		Metrics: metrics.Values{
 			CPUUsage:      72.5,
 			MemoryUsage:   64.2,
