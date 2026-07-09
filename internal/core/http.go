@@ -1,6 +1,9 @@
 package core
 
 import (
+	"crypto/rand"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -33,6 +36,7 @@ type Handler struct {
 	offlineThreshold  time.Duration
 	warningThreshold  float64
 	criticalThreshold float64
+	publicCoreURL     string
 }
 
 const sessionCookieName = "tarisya_session"
@@ -41,6 +45,10 @@ type authRequest struct {
 	Name     string `json:"name"`
 	Email    string `json:"email"`
 	Password string `json:"password"`
+}
+
+type createServerRequest struct {
+	Name string `json:"name"`
 }
 
 func NewHandler(store *Store, cfg Config) http.Handler {
@@ -57,6 +65,7 @@ func NewHandler(store *Store, cfg Config) http.Handler {
 		offlineThreshold:  cfg.OfflineThreshold,
 		warningThreshold:  cfg.WarningThreshold,
 		criticalThreshold: cfg.CriticalThreshold,
+		publicCoreURL:     cfg.PublicCoreURL,
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", h.health)
@@ -65,8 +74,11 @@ func NewHandler(store *Store, cfg Config) http.Handler {
 	mux.HandleFunc("POST /api/v1/auth/logout", h.logout)
 	mux.HandleFunc("GET /api/v1/auth/me", h.me)
 	mux.HandleFunc("POST /api/v1/metrics", h.receiveMetrics)
+	mux.HandleFunc("POST /api/v1/servers", h.createServer)
 	mux.HandleFunc("GET /api/v1/servers", h.listServers)
 	mux.HandleFunc("GET /api/v1/servers/{id}", h.serverDetail)
+	mux.HandleFunc("DELETE /api/v1/servers/{id}", h.deleteServer)
+	mux.HandleFunc("POST /api/v1/servers/{id}/rotate-api-key", h.rotateServerAPIKey)
 	mux.HandleFunc("GET /api/v1/servers/{id}/latest-metrics", h.latestMetrics)
 	mux.HandleFunc("GET /api/v1/servers/{id}/metrics", h.metricsHistory)
 	return loggingMiddleware(h.corsMiddleware(mux))
@@ -169,6 +181,99 @@ func (h *Handler) listServers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"data": servers})
+}
+
+func (h *Handler) createServer(w http.ResponseWriter, r *http.Request) {
+	userID, ok := h.authenticateUser(w, r)
+	if !ok {
+		return
+	}
+	var input createServerRequest
+	if !decodeJSON(w, r, &input) {
+		return
+	}
+	input.Name = strings.TrimSpace(input.Name)
+	if len(input.Name) < 2 || len(input.Name) > 100 {
+		writeError(w, http.StatusBadRequest, "name must contain 2 to 100 characters")
+		return
+	}
+
+	serverID, err := randomHex("srv_", 10)
+	if err != nil {
+		slog.Error("could not generate server ID", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+	apiKey, err := randomSecret("tar_", 32)
+	if err != nil {
+		slog.Error("could not generate API key", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+	server, err := h.store.CreateServer(r.Context(), userID, serverID, input.Name, apiKey)
+	if err != nil {
+		slog.Error("could not create server", "error", err, "user_id", userID)
+		writeError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"data": map[string]any{
+			"server": server,
+			"agent_config": map[string]string{
+				"server_id": server.ID,
+				"api_key":   apiKey,
+				"core_url":  h.publicCoreURL,
+			},
+		},
+	})
+}
+
+func (h *Handler) deleteServer(w http.ResponseWriter, r *http.Request) {
+	userID, ok := h.authenticateUser(w, r)
+	if !ok {
+		return
+	}
+	deleted, err := h.store.DeleteServer(r.Context(), userID, r.PathValue("id"))
+	if err != nil {
+		slog.Error("could not delete server", "error", err, "user_id", userID)
+		writeError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+	if !deleted {
+		writeError(w, http.StatusNotFound, "server not found")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) rotateServerAPIKey(w http.ResponseWriter, r *http.Request) {
+	userID, ok := h.authenticateUser(w, r)
+	if !ok {
+		return
+	}
+	apiKey, err := randomSecret("tar_", 32)
+	if err != nil {
+		slog.Error("could not generate API key", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+	rotated, err := h.store.RotateAPIKey(r.Context(), userID, r.PathValue("id"), apiKey)
+	if err != nil {
+		slog.Error("could not rotate API key", "error", err, "user_id", userID)
+		writeError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+	if !rotated {
+		writeError(w, http.StatusNotFound, "server not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"data": map[string]string{
+			"server_id": r.PathValue("id"),
+			"api_key":   apiKey,
+			"core_url":  h.publicCoreURL,
+		},
+	})
 }
 
 func (h *Handler) serverDetail(w http.ResponseWriter, r *http.Request) {
@@ -502,6 +607,22 @@ func validatePayload(payload MetricsPayload) error {
 func bearerToken(header string) (string, bool) {
 	scheme, token, found := strings.Cut(header, " ")
 	return token, found && strings.EqualFold(scheme, "Bearer") && token != ""
+}
+
+func randomHex(prefix string, byteLength int) (string, error) {
+	value := make([]byte, byteLength)
+	if _, err := rand.Read(value); err != nil {
+		return "", err
+	}
+	return prefix + hex.EncodeToString(value), nil
+}
+
+func randomSecret(prefix string, byteLength int) (string, error) {
+	value := make([]byte, byteLength)
+	if _, err := rand.Read(value); err != nil {
+		return "", err
+	}
+	return prefix + base64.RawURLEncoding.EncodeToString(value), nil
 }
 
 func (h *Handler) corsMiddleware(next http.Handler) http.Handler {

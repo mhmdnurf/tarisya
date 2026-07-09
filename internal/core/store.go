@@ -239,6 +239,83 @@ func (s *Store) UserOwnsServer(ctx context.Context, userID int64, serverID strin
 	return owns, err
 }
 
+func (s *Store) CreateServer(
+	ctx context.Context,
+	userID int64,
+	serverID, name, apiKey string,
+) (ServerRecord, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return ServerRecord{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	var server ServerRecord
+	err = tx.QueryRow(ctx, `
+		INSERT INTO servers (id, user_id, name)
+		VALUES ($1, $2, $3)
+		RETURNING id, name, last_seen_at, created_at
+	`, serverID, userID, name).Scan(
+		&server.ID, &server.Name, &server.LastSeenAt, &server.CreatedAt,
+	)
+	if err != nil {
+		return ServerRecord{}, err
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO server_api_keys (server_id, api_key_hash)
+		VALUES ($1, $2)
+	`, serverID, hashAPIKey(apiKey)); err != nil {
+		return ServerRecord{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return ServerRecord{}, err
+	}
+	server.ConnectivityStatus = "pending"
+	server.HealthStatus = "unknown"
+	server.OverallStatus = "pending"
+	return server, nil
+}
+
+func (s *Store) DeleteServer(ctx context.Context, userID int64, serverID string) (bool, error) {
+	result, err := s.pool.Exec(ctx, `
+		DELETE FROM servers WHERE id = $1 AND user_id = $2
+	`, serverID, userID)
+	return result.RowsAffected() > 0, err
+}
+
+func (s *Store) RotateAPIKey(
+	ctx context.Context,
+	userID int64,
+	serverID, apiKey string,
+) (bool, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback(ctx)
+
+	var exists bool
+	if err := tx.QueryRow(ctx, `
+		SELECT EXISTS (SELECT 1 FROM servers WHERE id = $1 AND user_id = $2)
+	`, serverID, userID).Scan(&exists); err != nil || !exists {
+		return exists, err
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE server_api_keys
+		SET revoked_at = NOW()
+		WHERE server_id = $1 AND revoked_at IS NULL
+	`, serverID); err != nil {
+		return false, err
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO server_api_keys (server_id, api_key_hash)
+		VALUES ($1, $2)
+	`, serverID, hashAPIKey(apiKey)); err != nil {
+		return false, err
+	}
+	return true, tx.Commit(ctx)
+}
+
 func (s *Store) ServersByUser(
 	ctx context.Context,
 	userID int64,
@@ -250,7 +327,8 @@ func (s *Store) ServersByUser(
 		       s.name,
 		       CASE
 		           WHEN s.last_seen_at IS NULL
-		               OR s.last_seen_at < NOW() - make_interval(secs => $2)
+		           THEN 'pending'
+		           WHEN s.last_seen_at < NOW() - make_interval(secs => $2)
 		           THEN 'offline'
 		           ELSE 'online'
 		       END AS connectivity_status,
@@ -316,7 +394,8 @@ func (s *Store) ServerByUser(
 		       COALESCE(s.hostname, ''),
 		       CASE
 		           WHEN s.last_seen_at IS NULL
-		               OR s.last_seen_at < NOW() - make_interval(secs => $3)
+		           THEN 'pending'
+		           WHEN s.last_seen_at < NOW() - make_interval(secs => $3)
 		           THEN 'offline'
 		           ELSE 'online'
 		       END AS connectivity_status,
@@ -433,8 +512,8 @@ func (s *Store) MetricsChart(
 }
 
 func overallStatus(connectivity, health string) string {
-	if connectivity == "offline" {
-		return "offline"
+	if connectivity != "online" {
+		return connectivity
 	}
 	return health
 }

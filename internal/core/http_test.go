@@ -78,6 +78,32 @@ func TestChartRange(t *testing.T) {
 	}
 }
 
+func TestGeneratedCredentials(t *testing.T) {
+	serverID, err := randomHex("srv_", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(serverID) != len("srv_")+20 || !strings.HasPrefix(serverID, "srv_") {
+		t.Fatalf("unexpected server ID %q", serverID)
+	}
+	apiKey, err := randomSecret("tar_", 32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(apiKey, "tar_") || len(apiKey) < 40 {
+		t.Fatalf("unexpected API key format %q", apiKey)
+	}
+}
+
+func TestOverallStatus(t *testing.T) {
+	if got := overallStatus("pending", "unknown"); got != "pending" {
+		t.Fatalf("pending overall status = %q", got)
+	}
+	if got := overallStatus("online", "critical"); got != "critical" {
+		t.Fatalf("online critical overall status = %q", got)
+	}
+}
+
 func TestJWTLifecycle(t *testing.T) {
 	auth := NewAuth("a-secret-that-is-longer-than-32-characters", time.Hour)
 	user := User{ID: 42, Email: "user@example.com"}

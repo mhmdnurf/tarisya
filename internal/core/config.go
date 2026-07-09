@@ -11,6 +11,7 @@ import (
 type Config struct {
 	Address           string
 	DatabaseURL       string
+	PublicCoreURL     string
 	JWTSecret         string
 	JWTExpiration     time.Duration
 	AllowedOrigins    []string
@@ -30,6 +31,7 @@ func LoadConfig() (Config, error) {
 	cfg := Config{
 		Address:           coreEnvOrDefault("TARISYA_CORE_ADDRESS", ":8081"),
 		DatabaseURL:       strings.TrimSpace(os.Getenv("TARISYA_DATABASE_URL")),
+		PublicCoreURL:     coreEnvOrDefault("TARISYA_PUBLIC_CORE_URL", "http://localhost:8081"),
 		JWTSecret:         strings.TrimSpace(os.Getenv("TARISYA_JWT_SECRET")),
 		JWTExpiration:     24 * time.Hour,
 		AllowedOrigins:    splitCSV(coreEnvOrDefault("TARISYA_ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173")),

@@ -19,6 +19,7 @@ services:
     build: .
     environment:
       TARISYA_CORE_ADDRESS: :8081
+      TARISYA_PUBLIC_CORE_URL: ${TARISYA_PUBLIC_CORE_URL:-http://localhost:8081}
       TARISYA_DATABASE_URL: postgres://tarisya:tarisya@postgres:5432/tarisya?sslmode=disable
       TARISYA_JWT_SECRET: ${TARISYA_JWT_SECRET:-development-jwt-secret-change-this-now}
       TARISYA_ALLOWED_ORIGINS: ${TARISYA_ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:5173}

@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -10,7 +11,7 @@ import (
 )
 
 const (
-	defaultEndpoint = "http://localhost:8081/api/v1/metrics"
+	defaultCoreURL  = "http://localhost:8081"
 	defaultInterval = 15 * time.Second
 	defaultTimeout  = 10 * time.Second
 )
@@ -18,6 +19,7 @@ const (
 type Config struct {
 	ServerID string
 	APIKey   string
+	CoreURL  string
 	Endpoint string
 	Interval time.Duration
 	Timeout  time.Duration
@@ -28,7 +30,7 @@ func Load() (Config, error) {
 	cfg := Config{
 		ServerID: strings.TrimSpace(os.Getenv("TARISYA_SERVER_ID")),
 		APIKey:   strings.TrimSpace(os.Getenv("TARISYA_API_KEY")),
-		Endpoint: envOrDefault("TARISYA_CORE_URL", defaultEndpoint),
+		CoreURL:  envOrDefault("TARISYA_CORE_URL", defaultCoreURL),
 		Interval: defaultInterval,
 		Timeout:  defaultTimeout,
 		DiskPath: envOrDefault("TARISYA_DISK_PATH", "/"),
@@ -54,6 +56,10 @@ func Load() (Config, error) {
 	if cfg.APIKey == "" {
 		return Config{}, errors.New("TARISYA_API_KEY is required")
 	}
+	cfg.Endpoint, err = metricsEndpoint(cfg.CoreURL)
+	if err != nil {
+		return Config{}, fmt.Errorf("TARISYA_CORE_URL: %w", err)
+	}
 	if cfg.Interval < time.Second {
 		return Config{}, errors.New("TARISYA_INTERVAL must be at least 1s")
 	}
@@ -62,6 +68,14 @@ func Load() (Config, error) {
 	}
 
 	return cfg, nil
+}
+
+func metricsEndpoint(coreURL string) (string, error) {
+	parsed, err := url.ParseRequestURI(coreURL)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return "", errors.New("must be a valid absolute URL")
+	}
+	return url.JoinPath(coreURL, "api/v1/metrics")
 }
 
 func envOrDefault(key, fallback string) string {
