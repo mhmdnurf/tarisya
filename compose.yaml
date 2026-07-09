@@ -1,0 +1,37 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: tarisya
+      POSTGRES_USER: tarisya
+      POSTGRES_PASSWORD: tarisya
+    volumes:
+      - tarisya_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tarisya -d tarisya"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    ports:
+      - "5432:5432"
+
+  core:
+    build: .
+    environment:
+      TARISYA_CORE_ADDRESS: :8080
+      TARISYA_DATABASE_URL: postgres://tarisya:tarisya@postgres:5432/tarisya?sslmode=disable
+      TARISYA_BOOTSTRAP_SERVER_ID: ${TARISYA_SERVER_ID:-srv_prod_01}
+      TARISYA_BOOTSTRAP_API_KEY: ${TARISYA_API_KEY:-development-secret}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    ports:
+      - "8080:8080"
+
+volumes:
+  tarisya_postgres:
