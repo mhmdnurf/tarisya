@@ -65,6 +65,19 @@ func TestHistoryParametersRejectsInvalidLimit(t *testing.T) {
 	}
 }
 
+func TestChartRange(t *testing.T) {
+	duration, bucket, err := chartRange("6h")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if duration != 6*time.Hour || bucket != "5 minutes" {
+		t.Fatalf("chartRange = %v, %q", duration, bucket)
+	}
+	if _, _, err := chartRange("7d"); err == nil {
+		t.Fatal("unsupported range should be rejected")
+	}
+}
+
 func TestJWTLifecycle(t *testing.T) {
 	auth := NewAuth("a-secret-that-is-longer-than-32-characters", time.Hour)
 	user := User{ID: 42, Email: "user@example.com"}

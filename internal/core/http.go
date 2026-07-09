@@ -258,6 +258,11 @@ func (h *Handler) metricsHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if value := r.URL.Query().Get("range"); value != "" {
+		h.metricsChart(w, r, serverID, value)
+		return
+	}
+
 	limit, before, err := historyParameters(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -287,6 +292,53 @@ func (h *Handler) metricsHistory(w http.ResponseWriter, r *http.Request) {
 			"next_cursor": nextCursor,
 		},
 	})
+}
+
+func (h *Handler) metricsChart(w http.ResponseWriter, r *http.Request, serverID, value string) {
+	duration, bucket, err := chartRange(value)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	end := time.Now().UTC()
+	start := end.Add(-duration)
+	records, statistics, err := h.store.MetricsChart(
+		r.Context(),
+		serverID,
+		start,
+		end,
+		bucket,
+	)
+	if err != nil {
+		slog.Error("could not read chart metrics", "error", err, "server_id", serverID)
+		writeError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"data":       records,
+		"statistics": statistics,
+		"range": map[string]any{
+			"value":  value,
+			"start":  start,
+			"end":    end,
+			"bucket": bucket,
+		},
+	})
+}
+
+func chartRange(value string) (time.Duration, string, error) {
+	switch value {
+	case "15m":
+		return 15 * time.Minute, "15 seconds", nil
+	case "1h":
+		return time.Hour, "1 minute", nil
+	case "6h":
+		return 6 * time.Hour, "5 minutes", nil
+	case "24h":
+		return 24 * time.Hour, "15 minutes", nil
+	default:
+		return 0, "", errors.New("range must be one of: 15m, 1h, 6h, 24h")
+	}
 }
 
 func (h *Handler) authenticateUser(w http.ResponseWriter, r *http.Request) (int64, bool) {

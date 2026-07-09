@@ -23,10 +23,22 @@ type Store struct {
 }
 
 type MetricRecord struct {
-	ID          int64          `json:"id"`
+	ID          int64          `json:"id,omitempty"`
 	ServerID    string         `json:"server_id"`
 	CollectedAt time.Time      `json:"collected_at"`
 	Metrics     metrics.Values `json:"metrics"`
+}
+
+type MetricSummary struct {
+	Average float64 `json:"average"`
+	Peak    float64 `json:"peak"`
+}
+
+type MetricStatistics struct {
+	CPU         MetricSummary `json:"cpu"`
+	Memory      MetricSummary `json:"memory"`
+	Disk        MetricSummary `json:"disk"`
+	LoadAverage MetricSummary `json:"load_average"`
 }
 
 type User struct {
@@ -41,6 +53,7 @@ type User struct {
 type ServerRecord struct {
 	ID                 string     `json:"id"`
 	Name               string     `json:"name"`
+	OverallStatus      string     `json:"overall_status"`
 	ConnectivityStatus string     `json:"connectivity_status"`
 	HealthStatus       string     `json:"health_status"`
 	LastSeenAt         *time.Time `json:"last_seen_at"`
@@ -51,6 +64,7 @@ type ServerDetail struct {
 	ID                 string     `json:"id"`
 	Name               string     `json:"name"`
 	Hostname           string     `json:"hostname"`
+	OverallStatus      string     `json:"overall_status"`
 	ConnectivityStatus string     `json:"connectivity_status"`
 	HealthStatus       string     `json:"health_status"`
 	LastSeenAt         *time.Time `json:"last_seen_at"`
@@ -282,6 +296,7 @@ func (s *Store) ServersByUser(
 		); err != nil {
 			return nil, err
 		}
+		server.OverallStatus = overallStatus(server.ConnectivityStatus, server.HealthStatus)
 		servers = append(servers, server)
 	}
 	return servers, rows.Err()
@@ -340,7 +355,88 @@ func (s *Store) ServerByUser(
 		&server.UptimeSeconds,
 		&server.CreatedAt,
 	)
+	server.OverallStatus = overallStatus(server.ConnectivityStatus, server.HealthStatus)
 	return server, err
+}
+
+func (s *Store) MetricsChart(
+	ctx context.Context,
+	serverID string,
+	start, end time.Time,
+	bucket string,
+) ([]MetricRecord, MetricStatistics, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT date_bin($4::interval, collected_at, TIMESTAMPTZ '2000-01-01') AS bucket,
+		       AVG(cpu_usage),
+		       AVG(memory_usage),
+		       AVG(disk_usage),
+		       AVG(load_average),
+		       MAX(uptime_seconds)
+		FROM metrics
+		WHERE server_id = $1
+		  AND collected_at >= $2
+		  AND collected_at <= $3
+		GROUP BY bucket
+		ORDER BY bucket ASC
+	`, serverID, start, end, bucket)
+	if err != nil {
+		return nil, MetricStatistics{}, err
+	}
+
+	records := make([]MetricRecord, 0)
+	for rows.Next() {
+		var record MetricRecord
+		record.ServerID = serverID
+		if err := rows.Scan(
+			&record.CollectedAt,
+			&record.Metrics.CPUUsage,
+			&record.Metrics.MemoryUsage,
+			&record.Metrics.DiskUsage,
+			&record.Metrics.LoadAverage,
+			&record.Metrics.UptimeSeconds,
+		); err != nil {
+			rows.Close()
+			return nil, MetricStatistics{}, err
+		}
+		records = append(records, record)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, MetricStatistics{}, err
+	}
+	rows.Close()
+
+	var statistics MetricStatistics
+	err = s.pool.QueryRow(ctx, `
+		SELECT COALESCE(AVG(cpu_usage), 0), COALESCE(MAX(cpu_usage), 0),
+		       COALESCE(AVG(memory_usage), 0), COALESCE(MAX(memory_usage), 0),
+		       COALESCE(AVG(disk_usage), 0), COALESCE(MAX(disk_usage), 0),
+		       COALESCE(AVG(load_average), 0), COALESCE(MAX(load_average), 0)
+		FROM metrics
+		WHERE server_id = $1
+		  AND collected_at >= $2
+		  AND collected_at <= $3
+	`, serverID, start, end).Scan(
+		&statistics.CPU.Average,
+		&statistics.CPU.Peak,
+		&statistics.Memory.Average,
+		&statistics.Memory.Peak,
+		&statistics.Disk.Average,
+		&statistics.Disk.Peak,
+		&statistics.LoadAverage.Average,
+		&statistics.LoadAverage.Peak,
+	)
+	if err != nil {
+		return nil, MetricStatistics{}, err
+	}
+	return records, statistics, nil
+}
+
+func overallStatus(connectivity, health string) string {
+	if connectivity == "offline" {
+		return "offline"
+	}
+	return health
 }
 
 func (s *Store) APIKeyValid(ctx context.Context, serverID, apiKey string) (bool, error) {
