@@ -4,7 +4,7 @@ services:
     environment:
       TARISYA_CORE_ADDRESS: :8081
       TARISYA_PUBLIC_CORE_URL: ${TARISYA_PUBLIC_CORE_URL:-http://localhost:8081}
-      TARISYA_DATABASE_URL: file:/data/tarisya.db?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)
+      TARISYA_DATABASE_URL: file:/data/tarisya.db?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(FULL)
       TARISYA_RETENTION_RAW: ${TARISYA_RETENTION_RAW:-7d}
       TARISYA_RETENTION_5M: ${TARISYA_RETENTION_5M:-30d}
       TARISYA_RETENTION_AGGREGATED: ${TARISYA_RETENTION_AGGREGATED:-90d}

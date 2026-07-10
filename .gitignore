@@ -1,8 +1,10 @@
 docs
 .env
 bin/
+dist/
 tmp/
 build-errors.log
 README.md
 AGENT.md
 data
+.DS_STORE

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -11,10 +12,16 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
+	"github.com/mhmdnurf/tarisya/internal/buildinfo"
 	"github.com/mhmdnurf/tarisya/internal/core"
 )
 
 func main() {
+	if buildinfo.IsVersionCommand(os.Args[1:]) {
+		fmt.Fprintln(os.Stdout, buildinfo.String("tarisya-core"))
+		return
+	}
+
 	_ = godotenv.Load()
 
 	cfg, err := core.LoadConfig()

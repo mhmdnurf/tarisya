@@ -30,7 +30,7 @@ func TestDatabasePragmas(t *testing.T) {
 	for _, pragma := range []struct {
 		name string
 		want int
-	}{{"foreign_keys", 1}, {"busy_timeout", 5000}} {
+	}{{"foreign_keys", 1}, {"busy_timeout", 5000}, {"synchronous", 2}} {
 		var got int
 		if err := store.db.QueryRowContext(ctx, "PRAGMA "+pragma.name).Scan(&got); err != nil {
 			t.Fatal(err)

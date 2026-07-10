@@ -1,0 +1,85 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+version: 2
+
+project_name: tarisya
+
+builds:
+  - id: core
+    main: ./cmd/core
+    binary: tarisya-core
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - >-
+        -s -w
+        -X github.com/mhmdnurf/tarisya/internal/buildinfo.Version={{.Version}}
+        -X github.com/mhmdnurf/tarisya/internal/buildinfo.Commit={{.Commit}}
+        -X github.com/mhmdnurf/tarisya/internal/buildinfo.BuildDate={{.Date}}
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+
+  - id: agent
+    main: ./cmd/agent
+    binary: tarisya-agent
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - >-
+        -s -w
+        -X github.com/mhmdnurf/tarisya/internal/buildinfo.Version={{.Version}}
+        -X github.com/mhmdnurf/tarisya/internal/buildinfo.Commit={{.Commit}}
+        -X github.com/mhmdnurf/tarisya/internal/buildinfo.BuildDate={{.Date}}
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+
+archives:
+  - id: binaries
+    ids:
+      - core
+      - agent
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    files:
+      - none*
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+
+release:
+  github:
+    owner: mhmdnurf
+    name: tarisya

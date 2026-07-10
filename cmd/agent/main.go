@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -10,10 +11,16 @@ import (
 
 	"github.com/joho/godotenv"
 	"github.com/mhmdnurf/tarisya/internal/agent"
+	"github.com/mhmdnurf/tarisya/internal/buildinfo"
 	"github.com/mhmdnurf/tarisya/internal/config"
 )
 
 func main() {
+	if buildinfo.IsVersionCommand(os.Args[1:]) {
+		fmt.Fprintln(os.Stdout, buildinfo.String("tarisya-agent"))
+		return
+	}
+
 	_ = godotenv.Load()
 
 	cfg, err := config.Load()

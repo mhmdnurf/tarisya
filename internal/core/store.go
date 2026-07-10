@@ -21,6 +21,13 @@ type Store struct {
 	maxSize int64
 }
 
+const sqlitePragmas = `
+	PRAGMA foreign_keys = ON;
+	PRAGMA journal_mode = WAL;
+	PRAGMA busy_timeout = 5000;
+	PRAGMA synchronous = FULL;
+`
+
 type MetricRecord struct {
 	ID          int64          `json:"id,omitempty"`
 	ServerID    string         `json:"server_id"`
@@ -73,7 +80,7 @@ func OpenStore(ctx context.Context, databaseURL string, maxSize int64) (*Store, 
 		return nil, fmt.Errorf("configure database: %w", err)
 	}
 	db.SetMaxOpenConns(1) // SQLite has one writer; WAL still serves readers efficiently.
-	if _, err = db.ExecContext(ctx, "PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;"); err != nil {
+	if _, err = db.ExecContext(ctx, sqlitePragmas); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("configure SQLite pragmas: %w", err)
 	}
@@ -93,7 +100,7 @@ func RunMigration(databaseURL, direction string) error {
 		return err
 	}
 	defer db.Close()
-	if _, err := db.Exec("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;"); err != nil {
+	if _, err := db.Exec(sqlitePragmas); err != nil {
 		return err
 	}
 	return migrate(context.Background(), db, direction)
