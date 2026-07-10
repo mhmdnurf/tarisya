@@ -1,26 +1,15 @@
 services:
-  postgres:
-    image: postgres:17-alpine
-    environment:
-      POSTGRES_DB: tarisya
-      POSTGRES_USER: tarisya
-      POSTGRES_PASSWORD: tarisya
-    volumes:
-      - tarisya_postgres:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U tarisya -d tarisya"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-    ports:
-      - "5432:5432"
-
   core:
     build: .
     environment:
       TARISYA_CORE_ADDRESS: :8081
       TARISYA_PUBLIC_CORE_URL: ${TARISYA_PUBLIC_CORE_URL:-http://localhost:8081}
-      TARISYA_DATABASE_URL: postgres://tarisya:tarisya@postgres:5432/tarisya?sslmode=disable
+      TARISYA_DATABASE_URL: file:/data/tarisya.db?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)
+      TARISYA_RETENTION_RAW: ${TARISYA_RETENTION_RAW:-7d}
+      TARISYA_RETENTION_5M: ${TARISYA_RETENTION_5M:-30d}
+      TARISYA_RETENTION_AGGREGATED: ${TARISYA_RETENTION_AGGREGATED:-90d}
+      TARISYA_MAX_DATABASE_SIZE: ${TARISYA_MAX_DATABASE_SIZE:-5GB}
+      TARISYA_DATABASE_WARNING_THRESHOLD: ${TARISYA_DATABASE_WARNING_THRESHOLD:-0.8}
       TARISYA_JWT_SECRET: ${TARISYA_JWT_SECRET:-development-jwt-secret-change-this-now}
       TARISYA_ALLOWED_ORIGINS: ${TARISYA_ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:5173}
       TARISYA_COOKIE_SECURE: ${TARISYA_COOKIE_SECURE:-false}
@@ -32,9 +21,8 @@ services:
       TARISYA_BOOTSTRAP_USER_NAME: ${TARISYA_BOOTSTRAP_USER_NAME:-Development User}
       TARISYA_BOOTSTRAP_USER_EMAIL: ${TARISYA_BOOTSTRAP_USER_EMAIL:-dev@tarisya.local}
       TARISYA_BOOTSTRAP_USER_PASSWORD: ${TARISYA_BOOTSTRAP_USER_PASSWORD:-development-password}
-    depends_on:
-      postgres:
-        condition: service_healthy
+    volumes:
+      - tarisya_data:/data
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:8081/health"]
       interval: 10s
@@ -44,4 +32,4 @@ services:
       - "8081:8081"
 
 volumes:
-  tarisya_postgres:
+  tarisya_data:

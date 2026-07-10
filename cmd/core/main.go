@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/mhmdnurf/tarisya/internal/core"
@@ -25,7 +26,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	store, err := core.OpenStore(ctx, cfg.DatabaseURL)
+	store, err := core.OpenStore(ctx, cfg.DatabaseURL, cfg.MaxDatabaseSize)
 	if err != nil {
 		slog.Error("could not initialize database", "error", err)
 		os.Exit(1)
@@ -36,6 +37,37 @@ func main() {
 		slog.Error("could not migrate database", "error", err)
 		os.Exit(1)
 	}
+	maintenanceCfg := core.MaintenanceConfig{
+		RawRetention: cfg.RetentionRaw, FiveMinuteRetention: cfg.Retention5m,
+		AggregatedRetention: cfg.RetentionAggregated,
+	}
+	runMaintenance := func() {
+		if err := store.Maintain(ctx, maintenanceCfg); err != nil {
+			slog.Error("database maintenance failed", "error", err)
+			return
+		}
+		size, ratio, err := store.DatabaseUsage(ctx)
+		if err != nil {
+			slog.Error("could not read database size", "error", err)
+			return
+		}
+		if ratio >= cfg.DatabaseWarningThreshold {
+			slog.Warn("database size is nearing its limit", "size_bytes", size, "usage_ratio", ratio)
+		}
+	}
+	runMaintenance()
+	go func() {
+		ticker := time.NewTicker(time.Hour)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				runMaintenance()
+			}
+		}
+	}()
 	if cfg.BootstrapEmail != "" {
 		passwordHash, err := core.HashPassword(cfg.BootstrapPassword)
 		if err != nil {

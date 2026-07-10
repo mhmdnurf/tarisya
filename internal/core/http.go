@@ -2,6 +2,7 @@ package core
 
 import (
 	"crypto/rand"
+	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -14,8 +15,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/mhmdnurf/tarisya/internal/metrics"
 )
 
@@ -128,7 +127,7 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	}
 	input.Email = strings.ToLower(strings.TrimSpace(input.Email))
 	user, err := h.store.UserByEmail(r.Context(), input.Email)
-	if errors.Is(err, pgx.ErrNoRows) || (err == nil && !passwordMatches(user.PasswordHash, input.Password)) {
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && !passwordMatches(user.PasswordHash, input.Password)) {
 		writeError(w, http.StatusUnauthorized, "invalid email or password")
 		return
 	}
@@ -146,7 +145,7 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user, err := h.store.UserByID(r.Context(), userID)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, sql.ErrNoRows) {
 		writeError(w, http.StatusUnauthorized, "user no longer exists")
 		return
 	}
@@ -289,7 +288,7 @@ func (h *Handler) serverDetail(w http.ResponseWriter, r *http.Request) {
 		h.warningThreshold,
 		h.criticalThreshold,
 	)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, sql.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "server not found")
 		return
 	}
@@ -331,6 +330,10 @@ func (h *Handler) receiveMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.store.SaveMetrics(r.Context(), payload); err != nil {
+		if errors.Is(err, ErrDatabaseFull) {
+			writeError(w, http.StatusInsufficientStorage, "metric ingestion is paused because the database size limit was reached")
+			return
+		}
 		slog.Error("could not save metrics", "error", err, "server_id", payload.ServerID)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
@@ -345,7 +348,7 @@ func (h *Handler) latestMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 
 	record, err := h.store.LatestMetrics(r.Context(), serverID)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, sql.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "metrics not found")
 		return
 	}
@@ -544,8 +547,7 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, target any) bool {
 }
 
 func isUniqueViolation(err error) bool {
-	var pgError *pgconn.PgError
-	return errors.As(err, &pgError) && pgError.Code == "23505"
+	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed")
 }
 
 func historyParameters(r *http.Request) (int, time.Time, error) {

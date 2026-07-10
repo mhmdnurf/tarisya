@@ -6,7 +6,7 @@ COPY . .
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/tarisya-core ./cmd/core
 
 FROM alpine:3.22
-RUN apk add --no-cache ca-certificates
+RUN apk add --no-cache ca-certificates && mkdir -p /data
 COPY --from=build /out/tarisya-core /usr/local/bin/tarisya-core
 EXPOSE 8081
 ENTRYPOINT ["tarisya-core"]
