@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -121,6 +122,9 @@ func migrate(ctx context.Context, db *sql.DB, direction string) error {
 	if exists != 0 {
 		return nil
 	}
+	if err := backupBeforeMigration(ctx, db); err != nil {
+		return fmt.Errorf("backup database before migration: %w", err)
+	}
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -137,6 +141,56 @@ func migrate(ctx context.Context, db *sql.DB, direction string) error {
 		return err
 	}
 	return tx.Commit()
+}
+
+// backupBeforeMigration creates a consistent SQLite snapshot only when an
+// existing on-disk database has application objects that are about to be
+// migrated. Fresh and in-memory databases do not need a backup.
+func backupBeforeMigration(ctx context.Context, db *sql.DB) error {
+	var hasApplicationObjects bool
+	if err := db.QueryRowContext(ctx, `SELECT EXISTS(
+		SELECT 1 FROM sqlite_master
+		WHERE type IN ('table', 'index', 'trigger', 'view')
+		AND name NOT LIKE 'sqlite_%'
+		AND name != 'schema_migrations'
+	)`).Scan(&hasApplicationObjects); err != nil {
+		return err
+	}
+	if !hasApplicationObjects {
+		return nil
+	}
+
+	path, err := mainDatabasePath(ctx, db)
+	if err != nil {
+		return err
+	}
+	if path == "" || path == ":memory:" {
+		return nil
+	}
+	backupPath := filepath.Clean(path) + ".backup-" + time.Now().UTC().Format("20060102T150405.000000000Z")
+	if _, err := db.ExecContext(ctx, "VACUUM INTO ?", backupPath); err != nil {
+		return err
+	}
+	return nil
+}
+
+func mainDatabasePath(ctx context.Context, db *sql.DB) (string, error) {
+	rows, err := db.QueryContext(ctx, "PRAGMA database_list")
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var sequence int
+		var name, path string
+		if err := rows.Scan(&sequence, &name, &path); err != nil {
+			return "", err
+		}
+		if name == "main" {
+			return path, rows.Err()
+		}
+	}
+	return "", rows.Err()
 }
 
 func (s *Store) Bootstrap(ctx context.Context, name, email, passwordHash, serverID, apiKey string) error {
@@ -412,18 +466,29 @@ func (s *Store) SaveMetrics(ctx context.Context, p MetricsPayload) error {
 	}
 	tx, e := s.db.BeginTx(ctx, nil)
 	if e != nil {
-		return e
+		return mapDatabaseFullError(e)
 	}
 	defer tx.Rollback()
 	now := unixMillis(time.Now())
 	m := p.Metrics
 	if _, e = tx.ExecContext(ctx, `INSERT INTO metrics(server_id,cpu_usage,memory_usage,disk_usage,load_average,uptime_seconds,collected_at,created_at) VALUES(?,?,?,?,?,?,?,?)`, p.ServerID, m.CPUUsage, m.MemoryUsage, m.DiskUsage, m.LoadAverage, m.UptimeSeconds, unixMillis(p.Timestamp), now); e != nil {
-		return e
+		return mapDatabaseFullError(e)
 	}
 	if _, e = tx.ExecContext(ctx, `UPDATE servers SET hostname=?,agent_version=?,last_seen_at=?,status='healthy',updated_at=? WHERE id=?`, p.Hostname, p.AgentVersion, now, now, p.ServerID); e != nil {
-		return e
+		return mapDatabaseFullError(e)
 	}
-	return tx.Commit()
+	return mapDatabaseFullError(tx.Commit())
+}
+
+func mapDatabaseFullError(err error) error {
+	if err == nil || errors.Is(err, ErrDatabaseFull) {
+		return err
+	}
+	var coded interface{ Code() int }
+	if errors.As(err, &coded) && coded.Code()&0xff == 13 { // SQLITE_FULL
+		return fmt.Errorf("%w: %v", ErrDatabaseFull, err)
+	}
+	return err
 }
 func (s *Store) LatestMetrics(ctx context.Context, serverID string) (MetricRecord, error) {
 	return scanMetric(s.db.QueryRowContext(ctx, `SELECT id,server_id,cpu_usage,memory_usage,disk_usage,load_average,uptime_seconds,collected_at FROM metrics WHERE server_id=? ORDER BY collected_at DESC,id DESC LIMIT 1`, serverID).Scan)
