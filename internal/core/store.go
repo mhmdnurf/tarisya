@@ -17,8 +17,9 @@ import (
 )
 
 type Store struct {
-	db      *sql.DB
-	maxSize int64
+	db            *sql.DB
+	maxSize       int64
+	lifecycleLock *databaseLifecycleLock
 }
 
 const sqlitePragmas = `
@@ -80,18 +81,28 @@ func OpenStore(ctx context.Context, databaseURL string, maxSize int64) (*Store, 
 		return nil, fmt.Errorf("configure database: %w", err)
 	}
 	db.SetMaxOpenConns(1) // SQLite has one writer; WAL still serves readers efficiently.
+	lifecycleLock, err := acquireSharedDatabaseLock(ctx, db)
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("lock database lifecycle: %w", err)
+	}
 	if _, err = db.ExecContext(ctx, sqlitePragmas); err != nil {
+		lifecycleLock.release()
 		db.Close()
 		return nil, fmt.Errorf("configure SQLite pragmas: %w", err)
 	}
 	if err = db.PingContext(ctx); err != nil {
+		lifecycleLock.release()
 		db.Close()
 		return nil, fmt.Errorf("connect database: %w", err)
 	}
-	return &Store{db: db, maxSize: maxSize}, nil
+	return &Store{db: db, maxSize: maxSize, lifecycleLock: lifecycleLock}, nil
 }
 
-func (s *Store) Close() { _ = s.db.Close() }
+func (s *Store) Close() {
+	_ = s.db.Close()
+	s.lifecycleLock.release()
+}
 
 func (s *Store) Migrate(ctx context.Context) error { return migrate(ctx, s.db, "up") }
 func RunMigration(databaseURL, direction string) error {
@@ -100,6 +111,11 @@ func RunMigration(databaseURL, direction string) error {
 		return err
 	}
 	defer db.Close()
+	lifecycleLock, err := acquireExclusiveDatabaseLock(context.Background(), db)
+	if err != nil {
+		return fmt.Errorf("lock database lifecycle: %w", err)
+	}
+	defer lifecycleLock.release()
 	if _, err := db.Exec(sqlitePragmas); err != nil {
 		return err
 	}
