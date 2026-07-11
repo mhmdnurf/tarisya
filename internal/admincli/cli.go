@@ -17,6 +17,7 @@ const usage = `Usage:
   tarisya backup [--database URL] [--output PATH]
   tarisya restore [--database URL] [--checksum PATH] BACKUP
   tarisya database check [--database URL]
+  tarisya doctor [--config PATH] [--database URL] [--health-url URL]
   tarisya version
   tarisya help
 
@@ -42,6 +43,8 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		return runRestore(ctx, args[1:], stdout, stderr)
 	case "database":
 		return runDatabase(ctx, args[1:], stdout, stderr)
+	case "doctor":
+		return runDoctor(ctx, args[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "unknown command %q\n\n%s", args[0], usage)
 		return 2
