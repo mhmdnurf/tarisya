@@ -92,6 +92,7 @@ archives:
       {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
     files:
       - packaging/systemd/tarisya-core.service
+      - packaging/systemd/tarisya-agent.service
 
 checksum:
   name_template: checksums.txt
