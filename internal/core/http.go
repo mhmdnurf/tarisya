@@ -7,8 +7,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"math"
+	"mime"
 	"net/http"
 	"net/mail"
 	"strconv"
@@ -27,18 +29,24 @@ type MetricsPayload struct {
 }
 
 type Handler struct {
-	store             *Store
-	auth              *Auth
-	allowedOrigins    map[string]struct{}
-	tokenTTL          time.Duration
-	cookieSecure      bool
-	offlineThreshold  time.Duration
-	warningThreshold  float64
-	criticalThreshold float64
-	publicCoreURL     string
+	store              *Store
+	auth               *Auth
+	allowedOrigins     map[string]struct{}
+	tokenTTL           time.Duration
+	cookieSecure       bool
+	offlineThreshold   time.Duration
+	warningThreshold   float64
+	criticalThreshold  float64
+	publicCoreURL      string
+	authRateLimiter    *clientRateLimiter
+	metricsRateLimiter *clientRateLimiter
+	actionRateLimiter  *clientRateLimiter
 }
 
-const sessionCookieName = "tarisya_session"
+const (
+	sessionCookieName   = "tarisya_session"
+	maxRequestBodyBytes = int64(64 << 10)
+)
 
 type authRequest struct {
 	Name     string `json:"name"`
@@ -65,19 +73,32 @@ func NewHandler(store *Store, cfg Config) http.Handler {
 		warningThreshold:  cfg.WarningThreshold,
 		criticalThreshold: cfg.CriticalThreshold,
 		publicCoreURL:     cfg.PublicCoreURL,
+		authRateLimiter: newClientRateLimiter(
+			configuredRateLimit(cfg.AuthRateLimitPerMinute, defaultAuthRateLimitPerMinute),
+			configuredRateLimit(cfg.AuthRateLimitBurst, defaultAuthRateLimitBurst),
+		),
+		metricsRateLimiter: newClientRateLimiter(
+			configuredRateLimit(cfg.MetricsRateLimitPerMinute, defaultMetricsRateLimitPerMinute),
+			configuredRateLimit(cfg.MetricsRateLimitBurst, defaultMetricsRateLimitBurst),
+		),
+		actionRateLimiter: newClientRateLimiter(
+			configuredRateLimit(cfg.ActionRateLimitPerMinute, defaultActionRateLimitPerMinute),
+			configuredRateLimit(cfg.ActionRateLimitBurst, defaultActionRateLimitBurst),
+		),
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", h.health)
-	mux.HandleFunc("POST /api/v1/auth/register", h.register)
-	mux.HandleFunc("POST /api/v1/auth/login", h.login)
+	mux.Handle("POST /api/v1/auth/register", h.rateLimit(h.authRateLimiter, h.register))
+	mux.Handle("POST /api/v1/auth/login", h.rateLimit(h.authRateLimiter, h.login))
 	mux.HandleFunc("POST /api/v1/auth/logout", h.logout)
 	mux.HandleFunc("GET /api/v1/auth/me", h.me)
-	mux.HandleFunc("POST /api/v1/metrics", h.receiveMetrics)
-	mux.HandleFunc("POST /api/v1/servers", h.createServer)
+	mux.Handle("POST /api/v1/metrics", h.rateLimit(h.metricsRateLimiter, h.receiveMetrics))
+	mux.Handle("POST /api/v1/servers", h.rateLimit(h.actionRateLimiter, h.createServer))
 	mux.HandleFunc("GET /api/v1/servers", h.listServers)
 	mux.HandleFunc("GET /api/v1/servers/{id}", h.serverDetail)
-	mux.HandleFunc("DELETE /api/v1/servers/{id}", h.deleteServer)
-	mux.HandleFunc("POST /api/v1/servers/{id}/rotate-api-key", h.rotateServerAPIKey)
+	mux.Handle("DELETE /api/v1/servers/{id}", h.rateLimit(h.actionRateLimiter, h.deleteServer))
+	mux.Handle("POST /api/v1/servers/{id}/rotate-api-key", h.rateLimit(h.actionRateLimiter, h.rotateServerAPIKey))
+	mux.Handle("POST /api/v1/servers/{id}/revoke-api-key", h.rateLimit(h.actionRateLimiter, h.revokeServerAPIKey))
 	mux.HandleFunc("GET /api/v1/servers/{id}/latest-metrics", h.latestMetrics)
 	mux.HandleFunc("GET /api/v1/servers/{id}/metrics", h.metricsHistory)
 	return loggingMiddleware(h.corsMiddleware(mux))
@@ -127,7 +148,7 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	}
 	input.Email = strings.ToLower(strings.TrimSpace(input.Email))
 	user, err := h.store.UserByEmail(r.Context(), input.Email)
-	if errors.Is(err, sql.ErrNoRows) || (err == nil && !passwordMatches(user.PasswordHash, input.Password)) {
+	if errors.Is(err, sql.ErrNoRows) {
 		writeError(w, http.StatusUnauthorized, "invalid email or password")
 		return
 	}
@@ -135,6 +156,19 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 		slog.Error("could not find user", "error", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
+	}
+	matches, needsRehash := verifyPassword(user.PasswordHash, input.Password)
+	if !matches {
+		writeError(w, http.StatusUnauthorized, "invalid email or password")
+		return
+	}
+	if needsRehash {
+		newHash, hashErr := HashPassword(input.Password)
+		if hashErr != nil {
+			slog.Error("could not upgrade password hash", "error", hashErr, "user_id", user.ID)
+		} else if updateErr := h.store.UpdatePasswordHash(r.Context(), user.ID, user.PasswordHash, newHash); updateErr != nil {
+			slog.Error("could not store upgraded password hash", "error", updateErr, "user_id", user.ID)
+		}
 	}
 	h.respondWithToken(w, user, http.StatusOK)
 }
@@ -275,6 +309,24 @@ func (h *Handler) rotateServerAPIKey(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (h *Handler) revokeServerAPIKey(w http.ResponseWriter, r *http.Request) {
+	userID, ok := h.authenticateUser(w, r)
+	if !ok {
+		return
+	}
+	revoked, err := h.store.RevokeAPIKey(r.Context(), userID, r.PathValue("id"))
+	if err != nil {
+		slog.Error("could not revoke API key", "error", err, "user_id", userID)
+		writeError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+	if !revoked {
+		writeError(w, http.StatusNotFound, "server not found")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *Handler) serverDetail(w http.ResponseWriter, r *http.Request) {
 	userID, ok := h.authenticateUser(w, r)
 	if !ok {
@@ -302,10 +354,7 @@ func (h *Handler) serverDetail(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) receiveMetrics(w http.ResponseWriter, r *http.Request) {
 	var payload MetricsPayload
-	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&payload); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid JSON payload")
+	if !decodeJSON(w, r, &payload) {
 		return
 	}
 	if err := validatePayload(payload); err != nil {
@@ -530,20 +579,39 @@ func validateRegistration(input authRequest) error {
 	if err != nil || !strings.EqualFold(address.Address, input.Email) {
 		return errors.New("email must be valid")
 	}
-	if len(input.Password) < 8 || len(input.Password) > 72 {
-		return errors.New("password must contain 8 to 72 characters")
+	if len(input.Password) < 8 || len(input.Password) > 128 {
+		return errors.New("password must contain 8 to 128 characters")
 	}
 	return nil
 }
 
 func decodeJSON(w http.ResponseWriter, r *http.Request, target any) bool {
-	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10))
+	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || mediaType != "application/json" {
+		writeError(w, http.StatusUnsupportedMediaType, "Content-Type must be application/json")
+		return false
+	}
+
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxRequestBodyBytes))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid JSON payload")
+		writeJSONDecodeError(w, err)
+		return false
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		writeJSONDecodeError(w, err)
 		return false
 	}
 	return true
+}
+
+func writeJSONDecodeError(w http.ResponseWriter, err error) {
+	var tooLarge *http.MaxBytesError
+	if errors.As(err, &tooLarge) {
+		writeError(w, http.StatusRequestEntityTooLarge, "request body exceeds 64 KiB limit")
+		return
+	}
+	writeError(w, http.StatusBadRequest, "invalid JSON payload")
 }
 
 func isUniqueViolation(err error) bool {

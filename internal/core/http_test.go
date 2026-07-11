@@ -131,6 +131,10 @@ func TestValidateRegistration(t *testing.T) {
 	if err := validateRegistration(invalid); err == nil {
 		t.Fatal("short password should be rejected")
 	}
+	invalid.Password = strings.Repeat("a", 129)
+	if err := validateRegistration(invalid); err == nil {
+		t.Fatal("password longer than 128 characters should be rejected")
+	}
 }
 
 func TestSessionCookieIsHTTPOnly(t *testing.T) {

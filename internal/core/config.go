@@ -10,51 +10,72 @@ import (
 )
 
 type Config struct {
-	Address                  string
-	DatabaseURL              string
-	PublicCoreURL            string
-	JWTSecret                string
-	JWTExpiration            time.Duration
-	AllowedOrigins           []string
-	CookieSecure             bool
-	OfflineThreshold         time.Duration
-	WarningThreshold         float64
-	CriticalThreshold        float64
-	BootstrapServerID        string
-	BootstrapAPIKey          string
-	BootstrapName            string
-	BootstrapEmail           string
-	BootstrapPassword        string
-	ShutdownTimeout          time.Duration
-	RetentionRaw             time.Duration
-	Retention5m              time.Duration
-	RetentionAggregated      time.Duration
-	MaxDatabaseSize          int64
-	DatabaseWarningThreshold float64
+	Address                   string
+	DatabaseURL               string
+	PublicCoreURL             string
+	JWTSecret                 string
+	JWTExpiration             time.Duration
+	AllowedOrigins            []string
+	CookieSecure              bool
+	OfflineThreshold          time.Duration
+	WarningThreshold          float64
+	CriticalThreshold         float64
+	BootstrapServerID         string
+	BootstrapAPIKey           string
+	BootstrapName             string
+	BootstrapEmail            string
+	BootstrapPassword         string
+	ShutdownTimeout           time.Duration
+	RetentionRaw              time.Duration
+	Retention5m               time.Duration
+	RetentionAggregated       time.Duration
+	MaxDatabaseSize           int64
+	DatabaseWarningThreshold  float64
+	AuthRateLimitPerMinute    int
+	AuthRateLimitBurst        int
+	MetricsRateLimitPerMinute int
+	MetricsRateLimitBurst     int
+	ActionRateLimitPerMinute  int
+	ActionRateLimitBurst      int
 }
+
+const (
+	defaultAuthRateLimitPerMinute    = 10
+	defaultAuthRateLimitBurst        = 5
+	defaultMetricsRateLimitPerMinute = 600
+	defaultMetricsRateLimitBurst     = 100
+	defaultActionRateLimitPerMinute  = 30
+	defaultActionRateLimitBurst      = 10
+)
 
 func LoadConfig() (Config, error) {
 	cfg := Config{
-		Address:                  coreEnvOrDefault("TARISYA_CORE_ADDRESS", ":8081"),
-		DatabaseURL:              strings.TrimSpace(os.Getenv("TARISYA_DATABASE_URL")),
-		PublicCoreURL:            coreEnvOrDefault("TARISYA_PUBLIC_CORE_URL", "http://localhost:8081"),
-		JWTSecret:                strings.TrimSpace(os.Getenv("TARISYA_JWT_SECRET")),
-		JWTExpiration:            24 * time.Hour,
-		AllowedOrigins:           splitCSV(coreEnvOrDefault("TARISYA_ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173")),
-		CookieSecure:             false,
-		OfflineThreshold:         90 * time.Second,
-		WarningThreshold:         80,
-		CriticalThreshold:        90,
-		BootstrapServerID:        strings.TrimSpace(os.Getenv("TARISYA_BOOTSTRAP_SERVER_ID")),
-		BootstrapAPIKey:          strings.TrimSpace(os.Getenv("TARISYA_BOOTSTRAP_API_KEY")),
-		BootstrapName:            coreEnvOrDefault("TARISYA_BOOTSTRAP_USER_NAME", "Development User"),
-		BootstrapEmail:           strings.ToLower(strings.TrimSpace(os.Getenv("TARISYA_BOOTSTRAP_USER_EMAIL"))),
-		BootstrapPassword:        os.Getenv("TARISYA_BOOTSTRAP_USER_PASSWORD"),
-		ShutdownTimeout:          10 * time.Second,
-		RetentionRaw:             7 * 24 * time.Hour,
-		Retention5m:              30 * 24 * time.Hour,
-		RetentionAggregated:      90 * 24 * time.Hour,
-		DatabaseWarningThreshold: 0.8,
+		Address:                   coreEnvOrDefault("TARISYA_CORE_ADDRESS", ":8081"),
+		DatabaseURL:               strings.TrimSpace(os.Getenv("TARISYA_DATABASE_URL")),
+		PublicCoreURL:             coreEnvOrDefault("TARISYA_PUBLIC_CORE_URL", "http://localhost:8081"),
+		JWTSecret:                 strings.TrimSpace(os.Getenv("TARISYA_JWT_SECRET")),
+		JWTExpiration:             24 * time.Hour,
+		AllowedOrigins:            splitCSV(coreEnvOrDefault("TARISYA_ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173")),
+		CookieSecure:              false,
+		OfflineThreshold:          90 * time.Second,
+		WarningThreshold:          80,
+		CriticalThreshold:         90,
+		BootstrapServerID:         strings.TrimSpace(os.Getenv("TARISYA_BOOTSTRAP_SERVER_ID")),
+		BootstrapAPIKey:           strings.TrimSpace(os.Getenv("TARISYA_BOOTSTRAP_API_KEY")),
+		BootstrapName:             coreEnvOrDefault("TARISYA_BOOTSTRAP_USER_NAME", "Development User"),
+		BootstrapEmail:            strings.ToLower(strings.TrimSpace(os.Getenv("TARISYA_BOOTSTRAP_USER_EMAIL"))),
+		BootstrapPassword:         os.Getenv("TARISYA_BOOTSTRAP_USER_PASSWORD"),
+		ShutdownTimeout:           10 * time.Second,
+		RetentionRaw:              7 * 24 * time.Hour,
+		Retention5m:               30 * 24 * time.Hour,
+		RetentionAggregated:       90 * 24 * time.Hour,
+		DatabaseWarningThreshold:  0.8,
+		AuthRateLimitPerMinute:    defaultAuthRateLimitPerMinute,
+		AuthRateLimitBurst:        defaultAuthRateLimitBurst,
+		MetricsRateLimitPerMinute: defaultMetricsRateLimitPerMinute,
+		MetricsRateLimitBurst:     defaultMetricsRateLimitBurst,
+		ActionRateLimitPerMinute:  defaultActionRateLimitPerMinute,
+		ActionRateLimitBurst:      defaultActionRateLimitBurst,
 	}
 	if cfg.DatabaseURL == "" {
 		return Config{}, errors.New("TARISYA_DATABASE_URL is required")
@@ -119,17 +140,44 @@ func LoadConfig() (Config, error) {
 			return Config{}, errors.New("TARISYA_DATABASE_WARNING_THRESHOLD must be a number between 0 and 1")
 		}
 	}
+	for _, setting := range []struct {
+		key    string
+		target *int
+	}{
+		{"TARISYA_AUTH_RATE_LIMIT_PER_MINUTE", &cfg.AuthRateLimitPerMinute},
+		{"TARISYA_AUTH_RATE_LIMIT_BURST", &cfg.AuthRateLimitBurst},
+		{"TARISYA_METRICS_RATE_LIMIT_PER_MINUTE", &cfg.MetricsRateLimitPerMinute},
+		{"TARISYA_METRICS_RATE_LIMIT_BURST", &cfg.MetricsRateLimitBurst},
+		{"TARISYA_ACTION_RATE_LIMIT_PER_MINUTE", &cfg.ActionRateLimitPerMinute},
+		{"TARISYA_ACTION_RATE_LIMIT_BURST", &cfg.ActionRateLimitBurst},
+	} {
+		if *setting.target, err = positiveIntEnv(setting.key, *setting.target); err != nil {
+			return Config{}, err
+		}
+	}
 	if (cfg.BootstrapServerID == "") != (cfg.BootstrapAPIKey == "") {
 		return Config{}, errors.New("TARISYA_BOOTSTRAP_SERVER_ID and TARISYA_BOOTSTRAP_API_KEY must be set together")
 	}
 	bootstrapUserFields := cfg.BootstrapEmail != "" || cfg.BootstrapPassword != ""
-	if bootstrapUserFields && (cfg.BootstrapEmail == "" || len(cfg.BootstrapPassword) < 8) {
-		return Config{}, errors.New("bootstrap user requires an email and password of at least 8 characters")
+	if bootstrapUserFields && (cfg.BootstrapEmail == "" || len(cfg.BootstrapPassword) < 8 || len(cfg.BootstrapPassword) > 128) {
+		return Config{}, errors.New("bootstrap user requires an email and password of 8 to 128 characters")
 	}
 	if cfg.BootstrapServerID != "" && cfg.BootstrapEmail == "" {
 		return Config{}, errors.New("bootstrap server requires TARISYA_BOOTSTRAP_USER_EMAIL")
 	}
 	return cfg, nil
+}
+
+func positiveIntEnv(key string, fallback int) (int, error) {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback, nil
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed <= 0 {
+		return 0, fmt.Errorf("%s must be a positive integer", key)
+	}
+	return parsed, nil
 }
 
 func durationEnv(key string, fallback time.Duration) (time.Duration, error) {

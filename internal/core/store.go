@@ -239,6 +239,12 @@ func (s *Store) UserByEmail(ctx context.Context, email string) (User, error) {
 func (s *Store) UserByID(ctx context.Context, id int64) (User, error) {
 	return s.user(ctx, `SELECT id,name,email,role,password_hash,created_at FROM users WHERE id=?`, id)
 }
+
+func (s *Store) UpdatePasswordHash(ctx context.Context, userID int64, previousHash, newHash string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE users SET password_hash=?,updated_at=? WHERE id=? AND password_hash=?`, newHash, unixMillis(time.Now()), userID, previousHash)
+	return err
+}
+
 func (s *Store) user(ctx context.Context, q string, arg any) (User, error) {
 	var u User
 	var created int64
@@ -298,6 +304,25 @@ func (s *Store) RotateAPIKey(ctx context.Context, userID int64, serverID, apiKey
 	}
 	if _, e = tx.ExecContext(ctx, `INSERT INTO server_api_keys(server_id,api_key_hash,created_at) VALUES(?,?,?)`, serverID, hashAPIKey(apiKey), now); e != nil {
 		return false, e
+	}
+	return true, tx.Commit()
+}
+
+// RevokeAPIKey invalidates every active key for an owned server. It is
+// intentionally idempotent: an owned server with no active key still succeeds.
+func (s *Store) RevokeAPIKey(ctx context.Context, userID int64, serverID string) (bool, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+
+	var exists bool
+	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM servers WHERE id=? AND user_id=?)`, serverID, userID).Scan(&exists); err != nil || !exists {
+		return exists, err
+	}
+	if _, err = tx.ExecContext(ctx, `UPDATE server_api_keys SET revoked_at=? WHERE server_id=? AND revoked_at IS NULL`, unixMillis(time.Now()), serverID); err != nil {
+		return false, err
 	}
 	return true, tx.Commit()
 }
