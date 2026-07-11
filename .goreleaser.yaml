@@ -4,6 +4,30 @@ version: 2
 project_name: tarisya
 
 builds:
+  - id: admin
+    main: ./cmd/tarisya
+    binary: tarisya
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - >-
+        -s -w
+        -X github.com/mhmdnurf/tarisya/internal/buildinfo.Version={{.Version}}
+        -X github.com/mhmdnurf/tarisya/internal/buildinfo.Commit={{.Commit}}
+        -X github.com/mhmdnurf/tarisya/internal/buildinfo.BuildDate={{.Date}}
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+
   - id: core
     main: ./cmd/core
     binary: tarisya-core
@@ -55,6 +79,7 @@ builds:
 archives:
   - id: binaries
     ids:
+      - admin
       - core
       - agent
     formats:
@@ -66,7 +91,7 @@ archives:
     name_template: >-
       {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
     files:
-      - none*
+      - packaging/systemd/tarisya-core.service
 
 checksum:
   name_template: checksums.txt

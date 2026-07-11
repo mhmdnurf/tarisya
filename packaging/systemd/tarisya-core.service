@@ -1,0 +1,30 @@
+[Unit]
+Description=Tarisya Core
+Documentation=https://tarisya.nurfatkhur.com
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=tarisya
+Group=tarisya
+WorkingDirectory=/var/lib/tarisya
+EnvironmentFile=/etc/tarisya/core.env
+ExecStart=/usr/local/bin/tarisya-core
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=30s
+UMask=0077
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectControlGroups=true
+ProtectHome=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/tarisya /var/backups/tarisya
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target
