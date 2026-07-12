@@ -58,7 +58,10 @@ func TestRunDatabaseCheck(t *testing.T) {
 
 func TestRunDoctorHealthy(t *testing.T) {
 	ctx := context.Background()
-	directory := t.TempDir()
+	directory := filepath.Join(t.TempDir(), "Application Support", "Tarisya")
+	if err := os.MkdirAll(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	databaseURL := "file:" + filepath.Join(directory, "tarisya.db")
 	store, err := core.OpenStore(ctx, databaseURL, 0)
 	if err != nil {
@@ -78,7 +81,7 @@ func TestRunDoctorHealthy(t *testing.T) {
 	}))
 	defer health.Close()
 	configPath := filepath.Join(directory, "core.env")
-	config := "TARISYA_DATABASE_URL=" + databaseURL + "\n" +
+	config := "TARISYA_DATABASE_URL=\"" + databaseURL + "\"\n" +
 		"TARISYA_JWT_SECRET=doctor-secret-that-is-at-least-32-characters\n"
 	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
 		t.Fatal(err)

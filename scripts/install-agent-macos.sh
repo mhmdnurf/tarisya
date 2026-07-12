@@ -21,7 +21,14 @@ FRESH_INSTALL=0
 log() { printf '%s\n' "$*"; }
 fail() { printf 'error: %s\n' "$*" >&2; exit 1; }
 require_command() { command -v "$1" >/dev/null 2>&1 || fail "$1 is required"; }
-write_env() { printf '%s=%q\n' "$1" "$2"; }
+write_env() {
+  local key="$1" value="$2"
+  value="${value//\\/\\\\}"
+  value="${value//\"/\\\"}"
+  value="${value//\$/\\\$}"
+  value="${value//\`/\\\`}"
+  printf '%s="%s"\n' "$key" "$value"
+}
 is_loaded() { launchctl print "system/$LABEL" >/dev/null 2>&1; }
 stop_service() {
   local attempt=1

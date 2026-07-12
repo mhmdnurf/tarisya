@@ -47,7 +47,11 @@ prompt_value() {
 
 write_env() {
   local key="$1" value="$2"
-  printf '%s=%q\n' "$key" "$value"
+  value="${value//\\/\\\\}"
+  value="${value//\"/\\\"}"
+  value="${value//\$/\\\$}"
+  value="${value//\`/\\\`}"
+  printf '%s="%s"\n' "$key" "$value"
 }
 
 is_loaded() { launchctl print "system/$1" >/dev/null 2>&1; }
