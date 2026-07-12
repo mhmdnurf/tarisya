@@ -90,7 +90,7 @@ Install the current alpha release:
 
 ```bash
 curl -fsSL https://tarisya.nurfatkhur.com/install.sh |
-  sudo TARISYA_VERSION=v0.2.0-alpha.1 bash
+  sudo TARISYA_VERSION=v0.2.0-alpha.2 bash
 ```
 
 The installer asks whether to install a local Agent and prompts for the first administrator account. After installation, verify it:
@@ -120,7 +120,7 @@ optionally install a local Agent.
 
 ```bash
 curl -fsSL https://tarisya.nurfatkhur.com/install-macos.sh |
-  sudo TARISYA_VERSION=v0.2.0-alpha.1 bash
+  sudo TARISYA_VERSION=v0.2.0-alpha.2 bash
 ```
 
 The macOS installation uses:
@@ -144,7 +144,7 @@ Install only the Agent on another Mac:
 
 ```bash
 curl -fsSL https://tarisya.nurfatkhur.com/install-agent-macos.sh |
-  sudo TARISYA_VERSION=v0.2.0-alpha.1 \
+  sudo TARISYA_VERSION=v0.2.0-alpha.2 \
     TARISYA_CORE_URL=https://monitor.example.com \
     TARISYA_SERVER_ID=srv_xxxxxxxx \
     TARISYA_API_KEY=tar_xxxxxxxx \
@@ -191,7 +191,7 @@ Core must be reachable from the monitored server through HTTPS, a private networ
 
 ```bash
 curl -fsSL https://tarisya.nurfatkhur.com/install-agent.sh |
-  sudo TARISYA_VERSION=v0.2.0-alpha.1 \
+  sudo TARISYA_VERSION=v0.2.0-alpha.2 \
     TARISYA_CORE_URL=https://monitor.example.com \
     TARISYA_SERVER_ID=srv_xxxxxxxx \
     TARISYA_API_KEY=tar_xxxxxxxx \
