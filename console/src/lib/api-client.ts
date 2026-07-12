@@ -41,7 +41,7 @@ export async function apiFetch<T>(
 	if (!response.ok) {
 		const message = await response
 			.json()
-			.then((data) => data?.message as string | undefined)
+			.then((data) => data?.error as string | undefined)
 			.catch(() => undefined);
 		throw new ApiError(
 			response.status,

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mhmdnurf/tarisya/internal/buildinfo"
 	"github.com/mhmdnurf/tarisya/internal/config"
 	"github.com/mhmdnurf/tarisya/internal/metrics"
 )
@@ -20,6 +21,9 @@ func TestSend(t *testing.T) {
 		}
 		if got := r.Header.Get("Content-Type"); got != "application/json" {
 			t.Errorf("Content-Type = %q", got)
+		}
+		if got, want := r.Header.Get("User-Agent"), "tarisya-agent/"+buildinfo.Version; got != want {
+			t.Errorf("User-Agent = %q, want %q", got, want)
 		}
 		if err := json.NewDecoder(r.Body).Decode(&received); err != nil {
 			t.Fatal(err)
@@ -37,7 +41,7 @@ func TestSend(t *testing.T) {
 	payload := Payload{
 		ServerID:     "srv_prod_01",
 		Hostname:     "web-01",
-		AgentVersion: Version,
+		AgentVersion: buildinfo.Version,
 		Timestamp:    time.Date(2026, 7, 9, 12, 0, 0, 0, time.UTC),
 		Metrics: metrics.Values{
 			CPUUsage:      72.5,
@@ -53,6 +57,9 @@ func TestSend(t *testing.T) {
 	}
 	if received.ServerID != payload.ServerID {
 		t.Fatalf("server_id = %q, want %q", received.ServerID, payload.ServerID)
+	}
+	if received.AgentVersion != buildinfo.Version {
+		t.Fatalf("agent_version = %q, want %q", received.AgentVersion, buildinfo.Version)
 	}
 	if received.Metrics != payload.Metrics {
 		t.Fatalf("metrics = %#v, want %#v", received.Metrics, payload.Metrics)

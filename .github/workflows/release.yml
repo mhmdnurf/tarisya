@@ -12,11 +12,43 @@ jobs:
   release:
     name: Build and publish binaries
     runs-on: ubuntu-latest
+
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: console/pnpm-lock.yaml
+
+      - name: Install console dependencies
+        working-directory: console
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint console
+        working-directory: console
+        run: pnpm lint
+
+      - name: Build console
+        working-directory: console
+        run: pnpm build
+
+      - name: Stage console for embedding
+        run: |
+          rm -rf internal/webui/dist
+          mkdir -p internal/webui/dist
+          cp -R console/dist/. internal/webui/dist/
+          test -f internal/webui/dist/index.html
 
       - name: Set up Go
         uses: actions/setup-go@v5

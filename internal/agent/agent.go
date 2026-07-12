@@ -11,6 +11,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/mhmdnurf/tarisya/internal/buildinfo"
 	"github.com/mhmdnurf/tarisya/internal/config"
 	"github.com/mhmdnurf/tarisya/internal/metrics"
 )
@@ -22,8 +23,6 @@ type Payload struct {
 	Timestamp    time.Time      `json:"timestamp"`
 	Metrics      metrics.Values `json:"metrics"`
 }
-
-const Version = "v0.1.0"
 
 type Agent struct {
 	config    config.Config
@@ -75,7 +74,7 @@ func (a *Agent) collectAndSend(ctx context.Context) {
 	payload := Payload{
 		ServerID:     a.config.ServerID,
 		Hostname:     a.hostname,
-		AgentVersion: Version,
+		AgentVersion: buildinfo.Version,
 		Timestamp:    time.Now().UTC(),
 		Metrics:      values,
 	}
@@ -103,7 +102,7 @@ func (a *Agent) send(ctx context.Context, payload Payload) error {
 	}
 	req.Header.Set("Authorization", "Bearer "+a.config.APIKey)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "tarisya-agent/0.1")
+	req.Header.Set("User-Agent", "tarisya-agent/"+buildinfo.Version)
 
 	response, err := a.client.Do(req)
 	if err != nil {

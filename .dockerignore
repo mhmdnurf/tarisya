@@ -1,0 +1,13 @@
+.git
+.github
+.env
+.env.*
+!.env.example
+bin
+data
+tmp
+console/node_modules
+console/dist
+internal/webui/dist
+*.log
+.DS_Store
