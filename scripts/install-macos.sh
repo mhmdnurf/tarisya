@@ -51,7 +51,18 @@ write_env() {
 }
 
 is_loaded() { launchctl print "system/$1" >/dev/null 2>&1; }
-stop_service() { launchctl bootout "system/$1" >/dev/null 2>&1 || true; }
+stop_service() {
+  local label="$1" attempt=1
+  launchctl bootout "system/$label" >/dev/null 2>&1 || true
+  while [ "$attempt" -le 10 ] && is_loaded "$label"; do
+    sleep 1
+    attempt=$((attempt + 1))
+  done
+  if is_loaded "$label"; then
+    printf 'error: launchd did not stop %s\n' "$label" >&2
+    return 1
+  fi
+}
 start_service() {
   local label="$1" plist="$2"
   launchctl bootstrap system "$plist"
@@ -79,8 +90,8 @@ install_plist() {
 
 rollback_installation() {
   log "Installation failed; restoring the previous macOS installation..."
-  stop_service "$AGENT_LABEL"
-  stop_service "$CORE_LABEL"
+  stop_service "$AGENT_LABEL" || true
+  stop_service "$CORE_LABEL" || true
   for name in tarisya tarisya-core tarisya-agent; do
     if [ -f "${ROLLBACK_DIR}/${name}" ]; then
       install -m 0755 "${ROLLBACK_DIR}/${name}" "${INSTALL_DIR}/${name}"
@@ -113,7 +124,7 @@ umask 077
 [ "$(id -u)" -eq 0 ] || fail "run this installer with sudo"
 [ "$(uname -s)" = Darwin ] || fail "this installer supports macOS only"
 
-for command in awk chown cp curl date id install launchctl mkdir mktemp openssl plutil rm sed shasum sleep stat sw_vers tail tar tr; do require_command "$command"; done
+for command in awk chown cp curl date id install launchctl lsof mkdir mktemp openssl plutil rm sed shasum sleep stat sw_vers tail tar tr; do require_command "$command"; done
 
 MACOS_MAJOR="$(sw_vers -productVersion | awk -F. '{print $1}')"
 [ "$MACOS_MAJOR" -ge 12 ] || fail "macOS 12 Monterey or newer is required"
@@ -124,6 +135,11 @@ if [ -z "$SERVICE_USER" ] || [ "$SERVICE_USER" = root ]; then SERVICE_USER="$(st
 [ -n "$SERVICE_USER" ] && [ "$SERVICE_USER" != root ] && [ "$SERVICE_USER" != loginwindow ] || fail "could not determine the macOS user that should run Tarisya"
 id "$SERVICE_USER" >/dev/null 2>&1 || fail "macOS user ${SERVICE_USER} does not exist"
 SERVICE_GROUP="$(id -gn "$SERVICE_USER")"
+
+if ! is_loaded "$CORE_LABEL" && lsof -nP -iTCP:8081 -sTCP:LISTEN >/dev/null 2>&1; then
+  lsof -nP -iTCP:8081 -sTCP:LISTEN >&2 || true
+  fail "TCP port 8081 is already in use; stop the process above before installing Tarisya"
+fi
 
 if [ -n "${TARISYA_VERSION:-}" ]; then RELEASE_TAG="$TARISYA_VERSION"; case "$RELEASE_TAG" in v*) ;; *) RELEASE_TAG="v${RELEASE_TAG}" ;; esac
 else RELEASE_TAG="$(curl -fsSL -o /dev/null -w '%{url_effective}' "https://github.com/${REPOSITORY}/releases/latest")"; RELEASE_TAG="${RELEASE_TAG##*/}"; fi

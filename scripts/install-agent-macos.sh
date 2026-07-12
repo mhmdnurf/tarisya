@@ -23,7 +23,18 @@ fail() { printf 'error: %s\n' "$*" >&2; exit 1; }
 require_command() { command -v "$1" >/dev/null 2>&1 || fail "$1 is required"; }
 write_env() { printf '%s=%q\n' "$1" "$2"; }
 is_loaded() { launchctl print "system/$LABEL" >/dev/null 2>&1; }
-stop_service() { launchctl bootout "system/$LABEL" >/dev/null 2>&1 || true; }
+stop_service() {
+  local attempt=1
+  launchctl bootout "system/$LABEL" >/dev/null 2>&1 || true
+  while [ "$attempt" -le 10 ] && is_loaded; do
+    sleep 1
+    attempt=$((attempt + 1))
+  done
+  if is_loaded; then
+    printf 'error: launchd did not stop %s\n' "$LABEL" >&2
+    return 1
+  fi
+}
 start_service() {
   launchctl bootstrap system "$PLIST_FILE"
   launchctl enable "system/$LABEL" >/dev/null 2>&1 || true
@@ -37,7 +48,7 @@ validate_value() {
 
 rollback_installation() {
   log "Agent installation failed; restoring the previous macOS installation..."
-  stop_service
+  stop_service || true
   if [ -f "${ROLLBACK_DIR}/tarisya-agent" ]; then install -m 0755 "${ROLLBACK_DIR}/tarisya-agent" "${INSTALL_DIR}/tarisya-agent"; elif [ "$FRESH_INSTALL" -eq 1 ]; then rm -f "${INSTALL_DIR}/tarisya-agent"; fi
   for pair in "agent.plist:$PLIST_FILE" "agent.env:$CONFIG_FILE" "run-agent.sh:$RUNNER"; do
     source_file="${ROLLBACK_DIR}/${pair%%:*}"; destination="${pair#*:}"
