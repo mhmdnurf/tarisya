@@ -33,8 +33,8 @@ Tarisya is designed for individuals and small teams that want a simple monitorin
 - SQLite retention, aggregation, and database size limits
 - Built-in diagnostics, backup, restore, and database checks
 - Embedded React Console—no separate frontend service required
-- Native Linux/systemd and Docker deployment
-- Linux and macOS release binaries for development and manual installation
+- Native Linux/systemd, macOS/launchd, and Docker deployment
+- Intel and Apple Silicon macOS support from Monterey onward
 
 ## Components
 
@@ -111,6 +111,52 @@ The native installation uses these locations:
 | Backups             | `/var/backups/tarisya`        |
 | Core service        | `tarisya-core.service`        |
 | Agent service       | `tarisya-agent.service`       |
+
+### macOS 12 Monterey or newer
+
+The macOS installer supports Intel and Apple Silicon. It installs Core as a
+system LaunchDaemon running under the macOS user who invoked `sudo`, and can
+optionally install a local Agent.
+
+> [!NOTE]
+> Replace `vX.Y.Z` with a release that includes the macOS installer and launchd
+> assets. Releases created before this feature cannot be installed this way.
+
+```bash
+curl -fsSL https://tarisya.nurfatkhur.com/install-macos.sh |
+  sudo TARISYA_VERSION=vX.Y.Z bash
+```
+
+The macOS installation uses:
+
+| Purpose                | Location                                  |
+| ---------------------- | ----------------------------------------- |
+| Configuration and data | `/Library/Application Support/Tarisya`    |
+| Logs                   | `/Library/Logs/Tarisya`                    |
+| Core service           | `com.tarisya.core`                         |
+| Agent service          | `com.tarisya.agent`                        |
+
+Verify Core and open the local Console:
+
+```bash
+curl http://127.0.0.1:8081/health
+sudo launchctl print system/com.tarisya.core
+open http://localhost:8081
+```
+
+Install only the Agent on another Mac:
+
+```bash
+curl -fsSL https://tarisya.nurfatkhur.com/install-agent-macos.sh |
+  sudo TARISYA_VERSION=vX.Y.Z \
+    TARISYA_CORE_URL=https://monitor.example.com \
+    TARISYA_SERVER_ID=srv_xxxxxxxx \
+    TARISYA_API_KEY=tar_xxxxxxxx \
+    bash
+```
+
+Tarisya supports macOS 12 Monterey or newer. Catalina and Big Sur are not
+supported by the current release toolchain.
 
 ### Open the Console
 

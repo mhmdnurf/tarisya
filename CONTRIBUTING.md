@@ -42,6 +42,8 @@ terminals.
 - Update documentation when changing configuration, CLI commands, deployment,
   or the API surface.
 - Add or update tests when application behavior changes.
+- Keep installer scripts compatible with the platform shell: Bash 3.2 for
+  macOS installers and Bash on supported Linux/systemd distributions.
 
 ## Testing
 
@@ -68,6 +70,13 @@ For Go-only changes after Console assets have been staged:
 ```bash
 gofmt -w path/to/changed.go
 go test ./...
+```
+
+Validate installer syntax after changing installation or packaging code:
+
+```bash
+bash -n scripts/install.sh scripts/install-agent.sh
+bash -n scripts/install-macos.sh scripts/install-agent-macos.sh
 ```
 
 ## Commit messages

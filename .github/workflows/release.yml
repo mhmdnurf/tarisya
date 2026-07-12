@@ -63,6 +63,8 @@ jobs:
         run: |
           bash -n scripts/install.sh
           bash -n scripts/install-agent.sh
+          bash -n scripts/install-macos.sh
+          bash -n scripts/install-agent-macos.sh
 
       - name: Release with GoReleaser
         uses: goreleaser/goreleaser-action@v7

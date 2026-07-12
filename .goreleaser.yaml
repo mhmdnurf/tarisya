@@ -93,6 +93,10 @@ archives:
     files:
       - packaging/systemd/tarisya-core.service
       - packaging/systemd/tarisya-agent.service
+      - packaging/launchd/com.tarisya.core.plist
+      - packaging/launchd/com.tarisya.agent.plist
+      - packaging/launchd/run-core.sh
+      - packaging/launchd/run-agent.sh
 
 checksum:
   name_template: checksums.txt

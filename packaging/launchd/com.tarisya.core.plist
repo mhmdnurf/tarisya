@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.tarisya.core</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Library/Application Support/Tarisya/run-core.sh</string>
+  </array>
+  <key>UserName</key>
+  <string>__TARISYA_USER__</string>
+  <key>GroupName</key>
+  <string>__TARISYA_GROUP__</string>
+  <key>WorkingDirectory</key>
+  <string>/Library/Application Support/Tarisya/data</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>StandardOutPath</key>
+  <string>/Library/Logs/Tarisya/core.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Library/Logs/Tarisya/core-error.log</string>
+  <key>ThrottleInterval</key>
+  <integer>5</integer>
+</dict>
+</plist>
