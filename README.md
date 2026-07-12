@@ -90,7 +90,7 @@ Install the current alpha release:
 
 ```bash
 curl -fsSL https://tarisya.nurfatkhur.com/install.sh |
-  sudo TARISYA_VERSION=v0.1.1-alpha.1 bash
+  sudo TARISYA_VERSION=v0.2.0-alpha.1 bash
 ```
 
 The installer asks whether to install a local Agent and prompts for the first administrator account. After installation, verify it:
@@ -118,23 +118,19 @@ The macOS installer supports Intel and Apple Silicon. It installs Core as a
 system LaunchDaemon running under the macOS user who invoked `sudo`, and can
 optionally install a local Agent.
 
-> [!NOTE]
-> Replace `vX.Y.Z` with a release that includes the macOS installer and launchd
-> assets. Releases created before this feature cannot be installed this way.
-
 ```bash
 curl -fsSL https://tarisya.nurfatkhur.com/install-macos.sh |
-  sudo TARISYA_VERSION=vX.Y.Z bash
+  sudo TARISYA_VERSION=v0.2.0-alpha.1 bash
 ```
 
 The macOS installation uses:
 
-| Purpose                | Location                                  |
-| ---------------------- | ----------------------------------------- |
-| Configuration and data | `/Library/Application Support/Tarisya`    |
-| Logs                   | `/Library/Logs/Tarisya`                    |
-| Core service           | `com.tarisya.core`                         |
-| Agent service          | `com.tarisya.agent`                        |
+| Purpose                | Location                               |
+| ---------------------- | -------------------------------------- |
+| Configuration and data | `/Library/Application Support/Tarisya` |
+| Logs                   | `/Library/Logs/Tarisya`                |
+| Core service           | `com.tarisya.core`                     |
+| Agent service          | `com.tarisya.agent`                    |
 
 Verify Core and open the local Console:
 
@@ -148,7 +144,7 @@ Install only the Agent on another Mac:
 
 ```bash
 curl -fsSL https://tarisya.nurfatkhur.com/install-agent-macos.sh |
-  sudo TARISYA_VERSION=vX.Y.Z \
+  sudo TARISYA_VERSION=v0.2.0-alpha.1 \
     TARISYA_CORE_URL=https://monitor.example.com \
     TARISYA_SERVER_ID=srv_xxxxxxxx \
     TARISYA_API_KEY=tar_xxxxxxxx \
@@ -195,7 +191,7 @@ Core must be reachable from the monitored server through HTTPS, a private networ
 
 ```bash
 curl -fsSL https://tarisya.nurfatkhur.com/install-agent.sh |
-  sudo TARISYA_VERSION=v0.1.1-alpha.1 \
+  sudo TARISYA_VERSION=v0.2.0-alpha.1 \
     TARISYA_CORE_URL=https://monitor.example.com \
     TARISYA_SERVER_ID=srv_xxxxxxxx \
     TARISYA_API_KEY=tar_xxxxxxxx \
