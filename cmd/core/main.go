@@ -14,6 +14,7 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/mhmdnurf/tarisya/internal/buildinfo"
 	"github.com/mhmdnurf/tarisya/internal/core"
+	"github.com/mhmdnurf/tarisya/internal/webui"
 )
 
 func main() {
@@ -94,9 +95,16 @@ func main() {
 		}
 	}
 
+	coreHandler := core.NewHandler(store, cfg)
+
+	mux := http.NewServeMux()
+	mux.Handle("/api/", coreHandler)
+	mux.Handle("/health", coreHandler)
+	mux.Handle("/", webui.Handler())
+
 	server := &http.Server{
 		Addr:              cfg.Address,
-		Handler:           core.NewHandler(store, cfg),
+		Handler:           mux,
 		ReadHeaderTimeout: cfg.ShutdownTimeout,
 	}
 	go func() {
